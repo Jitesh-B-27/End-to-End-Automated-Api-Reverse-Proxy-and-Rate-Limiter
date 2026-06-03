@@ -1,0 +1,2 @@
+-- Lua script for atomic distributed rate limiting
+-- To be loaded into Redis via EVALSHA
