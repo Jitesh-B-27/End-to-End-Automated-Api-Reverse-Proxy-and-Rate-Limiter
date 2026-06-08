@@ -1,1 +1,17 @@
-# Grafana datasource configuration placeholder
+apiVersion: 1
+
+datasources:
+  - name: Prometheus
+    type: prometheus
+    uid: prometheus
+    # The URL uses the Docker Compose service name "prometheus" —
+    # resolved automatically on the internal Docker network.
+    url: http://prometheus:9090
+    access: proxy
+    isDefault: true
+    editable: false
+    jsonData:
+      # Match Prometheus scrape interval so Grafana does not query
+      # for data points that do not exist yet.
+      timeInterval: "15s"
+      httpMethod: POST
