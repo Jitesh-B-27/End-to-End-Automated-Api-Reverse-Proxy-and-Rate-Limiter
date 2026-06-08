@@ -1,31 +1,26 @@
 # Binaries
-bin/
-dist/
-
-# Go
+api-gateway/api-gateway
+mock_backend/mock-backend
 *.exe
-*.exe~
-*.dll
-*.so
-*.dylib
 
-# Build folders
-/build
-/tmp
+# Environment files with secrets
+.env
+api-gateway/.env
+mock_backend/.env
 
-# Dependency directories
-vendor/
+# Generated tokens — contain long-lived JWT secrets
+scripts/tokens.json
+
+# Go build cache
+*/vendor/
 
 # IDE
 .vscode/
 .idea/
 
+# Docker
+.docker/
+
 # OS
 .DS_Store
 Thumbs.db
-
-# Environment files
-.env
-
-# Logs
-*.log
