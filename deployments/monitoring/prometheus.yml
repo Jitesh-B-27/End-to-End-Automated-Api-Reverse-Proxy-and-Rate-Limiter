@@ -1,1 +1,28 @@
-# Prometheus scraping configuration placeholder
+global:
+  # How frequently Prometheus scrapes all targets.
+  # 15s is the industry standard for most workloads.
+  scrape_interval: 15s
+
+  # How long Prometheus waits for a target to respond before timing out.
+  scrape_timeout: 10s
+
+  # How frequently Prometheus evaluates alerting rules.
+  evaluation_interval: 15s
+
+scrape_configs:
+  # Scrape the API gateway's /metrics endpoint.
+  # The job_name "api-gateway" becomes the "job" label on every metric
+  # collected from this target — used in Grafana queries to filter by service.
+  - job_name: "api-gateway"
+    static_configs:
+      - targets: ["api-gateway:8080"]
+    # metrics_path defaults to /metrics — explicit here for clarity.
+    metrics_path: /metrics
+
+  # Scrape Prometheus itself so you can monitor the monitoring system.
+  # Useful for confirming scrape health in Grafana.
+  - job_name: "prometheus"
+    static_configs:
+      - targets: ["localhost:9090"]
+
+  
