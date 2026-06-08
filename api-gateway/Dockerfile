@@ -1,23 +1,25 @@
-# Build stage
-FROM golang:1.22-alpine AS builder
+FROM golang:1.25-alpine AS builder
 
-WORKDIR /app
+RUN apk add --no-cache git ca-certificates tzdata
 
-COPY go.mod ./
-# RUN go mod download
+WORKDIR /build
+
+COPY go.mod go.sum ./
+RUN go mod download
 
 COPY . .
+RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build \
+    -ldflags="-w -s -X main.version=1.0.0" \
+    -o api-gateway \
+    ./cmd/main.go
 
-RUN CGO_ENABLED=0 GOOS=linux go build -o api-gateway ./cmd/main.go
+FROM alpine:3.19
 
-# Run stage
-FROM alpine:latest
+RUN apk add --no-cache ca-certificates tzdata wget
 
 WORKDIR /app
-
-COPY --from=builder /app/api-gateway .
-COPY --from=builder /app/.env .
+COPY --from=builder /build/api-gateway .
 
 EXPOSE 8080
 
-CMD ["./api-gateway"]
+ENTRYPOINT ["/app/api-gateway"]
