@@ -1,38 +1,172 @@
-version: '3.8'
+# All services communicate on this internal network using their service
+# names as hostnames. The gateway reaches Redis at redis:6379, the mock
+# backend at mock-backend:8081, and so on. No IP addresses needed.
+networks:
+  gateway-network:
+    driver: bridge
+
+volumes:
+  redis-data:
+  prometheus-data:
+  grafana-data:
 
 services:
+
+  # ---------------------------------------------------------------------------
+  # Redis — shared between rate limiter (DB 0) and response cache (DB 1)
+  # ---------------------------------------------------------------------------
   redis:
-    image: redis:7-alpine
-    container_name: rlrp-redis
+    image: redis:7.2-alpine
+    container_name: redis
+    restart: unless-stopped
+    networks:
+      - gateway-network
+    volumes:
+      - redis-data:/data
+    # appendonly enables Redis persistence so rate limit counters survive
+    # a Redis restart during testing.
+    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
     ports:
+      # Expose Redis locally so you can run redis-cli from your host machine
+      # to inspect rate limit keys during development.
       - "6379:6379"
 
+  # ---------------------------------------------------------------------------
+  # Mock Backend — the downstream service the gateway proxies to
+  # ---------------------------------------------------------------------------
   mock-backend:
     build:
       context: ./mock_backend
       dockerfile: Dockerfile
-    container_name: rlrp-mock-backend
+    container_name: mock-backend
+    restart: unless-stopped
+    networks:
+      - gateway-network
+    environment:
+      APP_ENV: production
+      APP_PORT: "8081"
+      APP_NAME: mock-backend
+      SLOW_ENDPOINT_DELAY_MS: "3000"
+      UNSTABLE_ENDPOINT_FAILURE_RATE: "40"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8081/healthz || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
     ports:
       - "8081:8081"
-    environment:
-      - APP_PORT=8081
-      - APP_ENV=production
-      - SLOW_ENDPOINT_DELAY_MS=3000
-      - UNSTABLE_ENDPOINT_FAILURE_RATE=40
 
+  # ---------------------------------------------------------------------------
+  # API Gateway — the core service
+  # Depends on Redis and mock-backend being healthy before starting.
+  # ---------------------------------------------------------------------------
   api-gateway:
     build:
       context: ./api-gateway
       dockerfile: Dockerfile
-    container_name: rlrp-api-gateway
+    container_name: api-gateway
+    restart: unless-stopped
+    networks:
+      - gateway-network
+    environment:
+      APP_ENV: production
+      APP_NAME: api-gateway
+      APP_PORT: "8080"
+      APP_VERSION: "1.0.0"
+      # JWT — use a strong secret in production
+      JWT_SECRET: "your-super-secret-jwt-key-change-in-production"
+      JWT_EXPIRY_HOURS: "8760"
+      # Redis — uses service name as hostname
+      REDIS_ADDR: "redis:6379"
+      REDIS_PASSWORD: ""
+      REDIS_RATE_LIMIT_DB: "0"
+      REDIS_CACHE_DB: "1"
+      REDIS_POOL_SIZE: "0"
+      REDIS_MIN_IDLE_CONNS: "5"
+      REDIS_DIAL_TIMEOUT_SECONDS: "5"
+      REDIS_READ_TIMEOUT_SECONDS: "3"
+      REDIS_WRITE_TIMEOUT_SECONDS: "3"
+      # Rate limiting
+      RATE_LIMIT_WINDOW_SECONDS: "60"
+      THROTTLE_DELAY_MS: "500"
+      # Circuit breaker
+      CIRCUIT_BREAKER_FAILURE_THRESHOLD: "5"
+      CIRCUIT_BREAKER_RECOVERY_SECONDS: "30"
+      # Proxy — uses mock-backend service name as hostname
+      BACKEND_URL: "http://mock-backend:8081"
+      MAX_BODY_SIZE_BYTES: "1048576"
+      # Admin
+      ADMIN_TOKEN: "admin-secret-token-change-in-production"
+    depends_on:
+      redis:
+        condition: service_healthy
+      mock-backend:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8080/healthz || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
     ports:
       - "8080:8080"
-    environment:
-      - APP_PORT=8080
-      - APP_ENV=production
-      - UPSTREAM_URL=http://mock-backend:8081
-      - REDIS_ADDR=redis:6379
-      - JWT_SECRET=compose-jwt-secret-key-change-in-production
+
+  # ---------------------------------------------------------------------------
+  # Prometheus — scrapes /metrics from the gateway every 15 seconds
+  # ---------------------------------------------------------------------------
+  prometheus:
+    image: prom/prometheus:v2.51.0
+    container_name: prometheus
+    restart: unless-stopped
+    networks:
+      - gateway-network
+    volumes:
+      - ./deployments/monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+      # Keep 15 days of metrics — enough for any demo
+      - "--storage.tsdb.retention.time=15d"
+      - "--web.enable-lifecycle"
     depends_on:
-      - redis
-      - mock-backend
+      api-gateway:
+        condition: service_healthy
+    ports:
+      - "9090:9090"
+
+  # ---------------------------------------------------------------------------
+  # Grafana — visualises Prometheus metrics on pre-built dashboards
+  # ---------------------------------------------------------------------------
+  grafana:
+    image: grafana/grafana:10.4.0
+    container_name: grafana
+    restart: unless-stopped
+    networks:
+      - gateway-network
+    environment:
+      # Default credentials — fine for local demo
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: admin
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      # Disable login screen so the dashboard opens immediately
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
+      # Set the default home dashboard to our gateway dashboard
+      GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /var/lib/grafana/dashboards/gateway-dashboard.json
+    volumes:
+      # Datasource provisioning — connects Grafana to Prometheus automatically
+      - ./deployments/monitoring/grafana/datasources:/etc/grafana/provisioning/datasources:ro
+      # Dashboard provisioning config
+      - ./deployments/monitoring/grafana/dashboards/dashboard-provisioning.yaml:/etc/grafana/provisioning/dashboards/dashboard-provisioning.yaml:ro
+      # Dashboard JSON file
+      - ./deployments/monitoring/grafana/dashboards/gateway-dashboard.json:/var/lib/grafana/dashboards/gateway-dashboard.json:ro
+      - grafana-data:/var/lib/grafana
+    depends_on:
+      - prometheus
+    ports:
+      - "3000:3000"
