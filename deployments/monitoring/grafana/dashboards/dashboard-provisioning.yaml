@@ -1,0 +1,14 @@
+apiVersion: 1
+
+providers:
+  - name: "api-gateway-dashboards"
+    orgId: 1
+    # Grafana watches this directory for JSON dashboard files.
+    # Any JSON file placed here is automatically loaded at startup.
+    folder: "API Gateway"
+    type: file
+    disableDeletion: false
+    updateIntervalSeconds: 30
+    allowUiUpdates: true
+    options:
+      path: /var/lib/grafana/dashboards
