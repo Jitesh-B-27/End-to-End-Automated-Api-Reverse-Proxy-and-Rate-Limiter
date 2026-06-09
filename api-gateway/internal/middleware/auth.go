@@ -8,6 +8,7 @@ import (
 
 	"api-gateway/internal/auth"
 	"api-gateway/internal/models"
+	"api-gateway/internal/metrics"
 	"api-gateway/pkg/response"
 
 	"go.uber.org/zap"
@@ -44,6 +45,7 @@ func Authenticate(validator *auth.Validator, log *zap.Logger) func(http.Handler)
 					zap.String("remote_addr", r.RemoteAddr),
 					zap.Error(err),
 				)
+				metrics.AuthFailures.WithLabelValues("MISSING_TOKEN").Inc()
 				response.Fail(w, http.StatusUnauthorized,
 					"MISSING_TOKEN",
 					"authorization header must be in the format: Bearer <token>",
@@ -59,6 +61,7 @@ func Authenticate(validator *auth.Validator, log *zap.Logger) func(http.Handler)
 					zap.String("remote_addr", r.RemoteAddr),
 					zap.Error(err),
 				)
+				metrics.AuthFailures.WithLabelValues(classifyAuthError(err)).Inc()
 				writeAuthError(w, err)
 				return
 			}
@@ -132,5 +135,18 @@ func writeAuthError(w http.ResponseWriter, err error) {
 			"TOKEN_INVALID",
 			"the token could not be verified",
 		)
+	}
+}
+
+func classifyAuthError(err error) string {
+	switch {
+	case errors.Is(err, auth.ErrTokenExpired):
+		return "TOKEN_EXPIRED"
+	case errors.Is(err, auth.ErrTokenMalformed):
+		return "TOKEN_MALFORMED"
+	case errors.Is(err, auth.ErrTokenMissing):
+		return "TOKEN_MISSING"
+	default:
+		return "TOKEN_INVALID"
 	}
 }
