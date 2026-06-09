@@ -185,38 +185,67 @@
       "type": "stat"
     },
     {
-      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
       "fieldConfig": {
         "defaults": {
-          "color": { "mode": "thresholds" },
+          "mappings": [],
           "thresholds": {
             "mode": "absolute",
             "steps": [
-              { "color": "green", "value": null },
-              { "color": "red", "value": 1 }
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 1
+              }
             ]
           },
-          "unit": "short"
+          "color": {
+            "mode": "thresholds"
+          },
+          "unit": "short",
+          "noValue": "0"
         },
         "overrides": []
       },
-      "gridPos": { "h": 4, "w": 6, "x": 18, "y": 8 },
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 18,
+        "y": 8
+      },
       "id": 6,
       "options": {
+        "reduceOptions": {
+          "values": false,
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": ""
+        },
+        "orientation": "auto",
+        "textMode": "auto",
+        "wideLayout": true,
         "colorMode": "background",
         "graphMode": "area",
         "justifyMode": "auto",
-        "textMode": "auto"
+        "showPercentChange": false
       },
       "targets": [
         {
-          "expr": "sum(increase(gateway_blocked_requests_total[1m]))",
-          "legendFormat": "Blocked Requests",
+          "expr": "sum(rate(gateway_blocked_requests_total[1m])) or vector(0)",
+          "legendFormat": "Blocked Requests/sec",
           "refId": "A"
         }
       ],
       "title": "Blocked Requests (last 1m)",
-      "type": "stat"
+      "type": "stat",
+      "pluginVersion": "10.4.0"
     },
     {
       "datasource": { "type": "prometheus", "uid": "prometheus" },

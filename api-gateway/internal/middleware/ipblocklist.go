@@ -4,6 +4,7 @@ import (
 	"net/http"
 
 	"api-gateway/internal/ipblocklist"
+	"api-gateway/internal/metrics"
 	"api-gateway/pkg/response"
 
 	"go.uber.org/zap"
@@ -35,6 +36,10 @@ func IPBlocklist(bl *ipblocklist.Blocklist, log *zap.Logger) func(http.Handler) 
 					zap.String("client_ip", clientIP),
 					zap.String("path", r.URL.Path),
 				)
+
+				// Increment the Prometheus counter so Grafana can show blocked traffic.
+				metrics.BlockedRequests.Inc()
+
 				response.Fail(w, http.StatusForbidden,
 					"IP_BLOCKED",
 					"your IP address has been blocked",
