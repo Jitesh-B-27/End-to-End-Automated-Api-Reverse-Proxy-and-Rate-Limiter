@@ -55,11 +55,29 @@ func NewCacheRepository(
 // IsIPBlocked checks membership in the Redis Set keyed "blocklist:ips".
 // SISMEMBER is O(1) — this is the fastest possible Redis lookup.
 func (r *redisCacheRepository) IsIPBlocked(ctx context.Context, ip string) (bool, error) {
-	result, err := r.rateLimitClient.SIsMember(ctx, blocklist_key, ip).Result()
-	if err != nil {
-		return false, fmt.Errorf("IsIPBlocked redis error: %w", err)
+	// 1. First check if it is part of the master blocklist set
+	inSet, err := r.rateLimitClient.SIsMember(ctx, blocklist_key, ip).Result()
+	if err != nil || !inSet {
+		return false, err
 	}
-	return result, nil
+
+	// 2. If it is in the set, check if a temporary expiry key exists
+	expiryKey := fmt.Sprintf("blocklist:expiry:%s", ip)
+	exists, err := r.rateLimitClient.Exists(ctx, expiryKey).Result()
+	if err != nil {
+		return false, fmt.Errorf("checking expiry key redis error: %w", err)
+	}
+
+	// 3. If there's no expiry key, but it's still in our set, it means the temporary ban expired!
+	if exists == 0 {
+		// Lazily clean up the orphaned member from the set in the background
+		go func() {
+			_ = r.rateLimitClient.SRem(context.Background(), blocklist_key, ip).Err()
+		}()
+		return false, nil
+	}
+
+	return true, nil
 }
 
 // BlockIP adds an IP to the blocklist.
