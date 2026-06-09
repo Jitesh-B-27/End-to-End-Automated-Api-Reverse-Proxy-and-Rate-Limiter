@@ -24,3 +24,6 @@ scripts/tokens.json
 # OS
 .DS_Store
 Thumbs.db
+
+# Local Testing
+test_commands.txt
