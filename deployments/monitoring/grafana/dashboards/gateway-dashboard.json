@@ -67,7 +67,7 @@
       "id": 2,
       "targets": [
         {
-          "expr": "sum(rate(gateway_ratelimit_decisions_total[30s])) by (decision)",
+          "expr": "sum(rate(gateway_ratelimit_decisions_total[30s])) by (decision) or vector(0)",
           "legendFormat": "{{decision}}",
           "refId": "A"
         }
@@ -298,7 +298,7 @@
           "refId": "A"
         },
         {
-          "expr": "sum(rate(gateway_proxy_errors_total[30s])) by (type)",
+          "expr": "sum(rate(gateway_proxy_errors_total[30s])) by (type) or vector(0)",
           "legendFormat": "errors: {{type}}",
           "refId": "B"
         }
