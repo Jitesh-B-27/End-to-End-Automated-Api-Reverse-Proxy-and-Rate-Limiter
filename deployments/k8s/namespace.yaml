@@ -1,0 +1,9 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: api-gateway
+  labels:
+    # Labels allow kubectl to filter and select this namespace
+    # in multi-namespace clusters
+    project: api-rate-limiter
+    environment: local
