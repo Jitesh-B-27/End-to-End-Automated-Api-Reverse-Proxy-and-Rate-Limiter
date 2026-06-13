@@ -1,0 +1,97 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mock-backend
+  namespace: api-gateway
+  labels:
+    app: mock-backend
+    project: api-rate-limiter
+spec:
+  # Start with 2 replicas — HPA manages count from here.
+  # 2 minimum means no single point of failure.
+  replicas: 2
+  selector:
+    matchLabels:
+      app: mock-backend
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      # maxUnavailable: 0 — never reduce capacity during updates
+      maxUnavailable: 0
+      # maxSurge: 1 — spin up one extra pod before removing old one
+      maxSurge: 1
+  template:
+    metadata:
+      labels:
+        app: mock-backend
+      annotations:
+        # Prometheus pod annotation — tells Prometheus to scrape this pod.
+        # Optional for mock-backend since it has no custom metrics,
+        # but good practice for completeness.
+        prometheus.io/scrape: "false"
+    spec:
+      # Graceful termination — gives in-flight requests time to complete
+      # before the pod is forcefully killed. Must be > your longest
+      # expected request (slow endpoint is 3s, so 15s is safe).
+      terminationGracePeriodSeconds: 15
+      containers:
+        - name: mock-backend
+          image: mock-backend:latest
+          # Never pull from registry — use the image built locally
+          # into Minikube's Docker daemon
+          imagePullPolicy: Never
+          ports:
+            - containerPort: 8081
+              name: http
+          # Environment from ConfigMap
+          env:
+            - name: APP_ENV
+              valueFrom:
+                configMapKeyRef:
+                  name: api-gateway-config
+                  key: APP_ENV
+            - name: APP_PORT
+              valueFrom:
+                configMapKeyRef:
+                  name: api-gateway-config
+                  key: MOCK_APP_PORT
+            - name: APP_NAME
+              valueFrom:
+                configMapKeyRef:
+                  name: api-gateway-config
+                  key: MOCK_APP_NAME
+            - name: SLOW_ENDPOINT_DELAY_MS
+              valueFrom:
+                configMapKeyRef:
+                  name: api-gateway-config
+                  key: SLOW_ENDPOINT_DELAY_MS
+            - name: UNSTABLE_ENDPOINT_FAILURE_RATE
+              valueFrom:
+                configMapKeyRef:
+                  name: api-gateway-config
+                  key: UNSTABLE_ENDPOINT_FAILURE_RATE
+          resources:
+            requests:
+              # Mock backend is lightweight — small requests allocation
+              cpu: "50m"
+              memory: "64Mi"
+            limits:
+              # HPA uses this limit to calculate CPU percentage
+              cpu: "100m"
+              memory: "128Mi"
+          # Liveness — is the process alive?
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 8081
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            failureThreshold: 3
+          # Readiness — is the process ready for traffic?
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: 8081
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            failureThreshold: 3
