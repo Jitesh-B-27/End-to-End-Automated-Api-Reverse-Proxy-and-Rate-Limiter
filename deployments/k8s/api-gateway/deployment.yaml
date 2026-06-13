@@ -1,0 +1,175 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: api-gateway
+  namespace: api-gateway
+  labels:
+    app: api-gateway
+    project: api-rate-limiter
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: api-gateway
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+  template:
+    metadata:
+      labels:
+        app: api-gateway
+      annotations:
+        # Tell Prometheus to scrape this pod directly.
+        # When multiple gateway pods run, Prometheus scrapes each one
+        # and aggregates metrics automatically.
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8080"
+        prometheus.io/path: "/metrics"
+    spec:
+      terminationGracePeriodSeconds: 30
+      containers:
+        - name: api-gateway
+          image: api-gateway:latest
+          imagePullPolicy: Never
+          ports:
+            - containerPort: 8080
+              name: http
+          env:
+            # Non-sensitive config from ConfigMap
+            - name: APP_ENV
+              valueFrom:
+                configMapKeyRef:
+                  name: api-gateway-config
+                  key: APP_ENV
+            - name: APP_PORT
+              valueFrom:
+                configMapKeyRef:
+                  name: api-gateway-config
+                  key: APP_PORT
+            - name: APP_NAME
+              valueFrom:
+                configMapKeyRef:
+                  name: api-gateway-config
+                  key: APP_NAME
+            - name: APP_VERSION
+              valueFrom:
+                configMapKeyRef:
+                  name: api-gateway-config
+                  key: APP_VERSION
+            - name: REDIS_ADDR
+              valueFrom:
+                configMapKeyRef:
+                  name: api-gateway-config
+                  key: REDIS_ADDR
+            - name: REDIS_PASSWORD
+              valueFrom:
+                configMapKeyRef:
+                  name: api-gateway-config
+                  key: REDIS_PASSWORD
+            - name: REDIS_RATE_LIMIT_DB
+              valueFrom:
+                configMapKeyRef:
+                  name: api-gateway-config
+                  key: REDIS_RATE_LIMIT_DB
+            - name: REDIS_CACHE_DB
+              valueFrom:
+                configMapKeyRef:
+                  name: api-gateway-config
+                  key: REDIS_CACHE_DB
+            - name: REDIS_POOL_SIZE
+              valueFrom:
+                configMapKeyRef:
+                  name: api-gateway-config
+                  key: REDIS_POOL_SIZE
+            - name: REDIS_MIN_IDLE_CONNS
+              valueFrom:
+                configMapKeyRef:
+                  name: api-gateway-config
+                  key: REDIS_MIN_IDLE_CONNS
+            - name: REDIS_DIAL_TIMEOUT_SECONDS
+              valueFrom:
+                configMapKeyRef:
+                  name: api-gateway-config
+                  key: REDIS_DIAL_TIMEOUT_SECONDS
+            - name: REDIS_READ_TIMEOUT_SECONDS
+              valueFrom:
+                configMapKeyRef:
+                  name: api-gateway-config
+                  key: REDIS_READ_TIMEOUT_SECONDS
+            - name: REDIS_WRITE_TIMEOUT_SECONDS
+              valueFrom:
+                configMapKeyRef:
+                  name: api-gateway-config
+                  key: REDIS_WRITE_TIMEOUT_SECONDS
+            - name: RATE_LIMIT_WINDOW_SECONDS
+              valueFrom:
+                configMapKeyRef:
+                  name: api-gateway-config
+                  key: RATE_LIMIT_WINDOW_SECONDS
+            - name: THROTTLE_DELAY_MS
+              valueFrom:
+                configMapKeyRef:
+                  name: api-gateway-config
+                  key: THROTTLE_DELAY_MS
+            - name: CIRCUIT_BREAKER_FAILURE_THRESHOLD
+              valueFrom:
+                configMapKeyRef:
+                  name: api-gateway-config
+                  key: CIRCUIT_BREAKER_FAILURE_THRESHOLD
+            - name: CIRCUIT_BREAKER_RECOVERY_SECONDS
+              valueFrom:
+                configMapKeyRef:
+                  name: api-gateway-config
+                  key: CIRCUIT_BREAKER_RECOVERY_SECONDS
+            - name: BACKEND_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: api-gateway-config
+                  key: BACKEND_URL
+            - name: MAX_BODY_SIZE_BYTES
+              valueFrom:
+                configMapKeyRef:
+                  name: api-gateway-config
+                  key: MAX_BODY_SIZE_BYTES
+            - name: JWT_EXPIRY_HOURS
+              valueFrom:
+                configMapKeyRef:
+                  name: api-gateway-config
+                  key: JWT_EXPIRY_HOURS
+            # Sensitive config from Secret
+            - name: JWT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: api-gateway-secret
+                  key: JWT_SECRET
+            - name: ADMIN_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: api-gateway-secret
+                  key: ADMIN_TOKEN
+          resources:
+            requests:
+              # Gateway does more work per request than mock backend
+              cpu: "100m"
+              memory: "128Mi"
+            limits:
+              cpu: "200m"
+              memory: "256Mi"
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 8080
+            initialDelaySeconds: 15
+            periodSeconds: 10
+            failureThreshold: 3
+          # Readiness checks Redis connectivity via /readyz
+          # Pod only receives traffic after Redis is confirmed reachable
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: 8080
+            initialDelaySeconds: 10
+            periodSeconds: 5
+            failureThreshold: 3

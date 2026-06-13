@@ -1,0 +1,27 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: api-gateway-ingress
+  namespace: api-gateway
+  labels:
+    project: api-rate-limiter
+  annotations:
+    nginx.ingress.kubernetes.io/rewrite-target: /
+    # Increase proxy timeouts to handle slow endpoint (3s delay)
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "60"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "60"
+    # Increase body size limit to match gateway config
+    nginx.ingress.kubernetes.io/proxy-body-size: "1m"
+spec:
+  ingressClassName: nginx
+  rules:
+    - host: api-gateway.local
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: api-gateway-service
+                port:
+                  number: 8080
