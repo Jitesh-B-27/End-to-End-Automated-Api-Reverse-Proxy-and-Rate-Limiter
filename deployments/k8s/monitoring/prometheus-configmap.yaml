@@ -1,0 +1,59 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: prometheus-config
+  namespace: api-gateway
+  labels:
+    app: prometheus
+    project: api-rate-limiter
+data:
+  prometheus.yml: |
+    global:
+      scrape_interval: 15s
+      scrape_timeout: 10s
+      evaluation_interval: 15s
+
+    scrape_configs:
+      # Scrape each gateway pod individually using pod annotations.
+      # When HPA creates new pods, Prometheus discovers and scrapes
+      # them automatically via annotation-based service discovery.
+      - job_name: "api-gateway-pods"
+        kubernetes_sd_configs:
+          - role: pod
+            namespaces:
+              names:
+                - api-gateway
+        relabel_configs:
+          # Only scrape pods with annotation prometheus.io/scrape=true
+          - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_scrape]
+            action: keep
+            regex: "true"
+          # Use the port from annotation prometheus.io/port
+          - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_port]
+            action: replace
+            target_label: __address__
+            regex: (.+)
+            replacement: ${1}
+          - source_labels: [__meta_kubernetes_pod_ip,
+                            __meta_kubernetes_pod_annotation_prometheus_io_port]
+            action: replace
+            regex: (.+);(.+)
+            replacement: $1:$2
+            target_label: __address__
+          # Use the path from annotation
+          - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_path]
+            action: replace
+            target_label: __metrics_path__
+            regex: (.+)
+          # Add pod name as a label so you can filter per pod in Grafana
+          - source_labels: [__meta_kubernetes_pod_name]
+            action: replace
+            target_label: pod
+          # Add node name as a label
+          - source_labels: [__meta_kubernetes_node_name]
+            action: replace
+            target_label: node
+
+      - job_name: "prometheus"
+        static_configs:
+          - targets: ["localhost:9090"]
