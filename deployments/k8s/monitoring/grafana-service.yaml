@@ -1,0 +1,18 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: grafana-service
+  namespace: api-gateway
+  labels:
+    app: grafana
+    project: api-rate-limiter
+spec:
+  # NodePort so you can open Grafana in your browser from outside the cluster
+  type: NodePort
+  selector:
+    app: grafana
+  ports:
+    - port: 3000
+      targetPort: 3000
+      nodePort: 30300
+      name: http

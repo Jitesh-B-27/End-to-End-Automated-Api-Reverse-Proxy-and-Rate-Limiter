@@ -1,0 +1,12 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-dashboard-json
+  namespace: api-gateway
+  labels:
+    app: grafana
+    project: api-rate-limiter
+data:
+  # The gateway-dashboard.json content is loaded from the file below.
+  # Apply this configmap using kubectl with the --from-file flag.
+  # See apply command in the verification section below.
