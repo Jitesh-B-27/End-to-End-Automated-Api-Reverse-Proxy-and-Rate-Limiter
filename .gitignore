@@ -27,3 +27,6 @@ Thumbs.db
 
 # Local Testing
 test_commands.txt
+
+# Load Testing Results
+load-tests/results/
